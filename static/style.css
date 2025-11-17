@@ -59,10 +59,73 @@ body {
     color: #ddd;
 }
 
+.nav-auth {
+    position: absolute;
+    right: 120px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.auth-btn {
+    padding: 6px 12px;
+    border-radius: 4px;
+    text-decoration: none;
+    color: white;
+    background-color: #333;
+    transition: 0.2s;
+    border: 1px solid #777;
+    font-size: 14px;
+}
+
+.auth-btn:hover {
+    background-color: #555;
+}
+
+.register-btn {
+    background-color: #1a73e8;
+    border-color: #0f5acc;
+}
+
+.register-btn:hover {
+    background-color: #0f5acc;
+}
+
 .container {
     width: 80%;
     margin: 2rem auto;
     padding: 1rem;
+}
+
+.form-box {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    max-width: 400px;
+    margin: 2rem auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: 1px solid #ccc;
+}
+
+.form-box input {
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #aaa;
+}
+
+.form-box button {
+    padding: 10px;
+    border: none;
+    background-color: black;
+    color: white;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.form-box button:hover {
+    background-color: #333;
 }
 
 @media screen and (max-width: 393px) {
