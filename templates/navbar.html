@@ -2,5 +2,11 @@
     <ul class="nav-links">
         <li><a href="/">Home</a></li>
     </ul>
+
+    <div class="nav-auth">
+        <a href="{{ url_for('login') }}" class="auth-btn login-btn">Login</a>
+        <a href="{{ url_for('register') }}" class="auth-btn register-btn">Register</a>
+    </div>
+
     <img src="{{ url_for('static', filename='CounterStrikeLogo.png') }}" alt="Logo" class="nav-logo">
 </nav>
