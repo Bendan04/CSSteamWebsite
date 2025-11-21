@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}CS2 Weapon List{% endblock %}
+
+{% block content %}
+<h1>All CS2 Weapon Skins</h1>
+<p>Here are all items from the database:</p>
+
+{% if items %}
+<table class="weapon-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Rarity</th>
+            <th>StatTrak</th>
+            <th>Souvenir</th>
+            <th>Image</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for row in items %}
+        <tr>
+            <td>{{ row[0] }}</td> <!-- name -->
+            <td>{{ row[1] }}</td> <!-- rarity -->
+            <td>{{ row[2] }}</td> <!-- stattrak -->
+            <td>{{ row[3] }}</td> <!-- souvenir -->
+            <td>
+                {% if row[4] %}
+                    <img src="{{ row[4] }}" alt="{{ row[0] }}" class="weapon-img">
+                {% else %}
+                    No Image
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% else %}
+<p>No items found.</p>
+{% endif %}
+
+{% endblock %}
