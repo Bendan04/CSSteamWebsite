@@ -5,8 +5,9 @@
 <h1>All CS2 Weapon Skins</h1>
 <p>Here are all items from the database:</p>
 
-{% if items %}
-<table class="weapon-table">
+<input type="text" id="search-input" placeholder="Search by name or rarity..." style="width: 100%; padding: 8px; margin-bottom: 10px;">
+
+<table class="weapon-table" style="width:100%;">
     <thead>
         <tr>
             <th>Name</th>
@@ -16,14 +17,13 @@
             <th>Image</th>
         </tr>
     </thead>
-
-    <tbody>
+    <tbody id="items-body">
         {% for row in items %}
         <tr>
-            <td>{{ row[0] }}</td> <!-- name -->
-            <td>{{ row[1] }}</td> <!-- rarity -->
-            <td>{{ row[2] }}</td> <!-- stattrak -->
-            <td>{{ row[3] }}</td> <!-- souvenir -->
+            <td>{{ row[0] }}</td>
+            <td>{{ row[1] }}</td>
+            <td>{{ row[2] }}</td>
+            <td>{{ row[3] }}</td>
             <td>
                 {% if row[4] %}
                     <img src="{{ row[4] }}" alt="{{ row[0] }}" class="weapon-img">
@@ -36,8 +36,80 @@
     </tbody>
 </table>
 
-{% else %}
-<p>No items found.</p>
-{% endif %}
+<div id="loading" style="text-align:center; margin-top:10px; display:none;">Loading more items...</div>
 
+
+
+// js code below, ik it should be in a sep file, will do later - K
+// and yes i did write most of it
+
+<script>
+let page = 1;
+let loading = false;
+let allLoaded = false;
+let currentQuery = '';
+
+const tbody = document.getElementById('items-body');
+const searchInput = document.getElementById('search-input');
+
+function loadItems(reset=false) {
+    if (loading || allLoaded) return;
+    loading = true;
+    document.getElementById('loading').style.display = 'block';
+
+    const url = `/list?page=${page}&q=${encodeURIComponent(currentQuery)}`;
+
+    fetch(url, { headers: {'X-Requested-With': 'XMLHttpRequest'} })
+        .then(res => res.json())
+        .then(data => {
+            if (reset) tbody.innerHTML = '';
+            if (data.length === 0) {
+                allLoaded = true;
+                if (reset) tbody.innerHTML = '<tr><td colspan="5">No items found.</td></tr>';
+                document.getElementById('loading').innerText = 'No more items.';
+                loading = false;
+                return;
+            }
+
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${item.name}</td>
+                    <td>${item.rarity}</td>
+                    <td>${item.stattrak}</td>
+                    <td>${item.souvenir}</td>
+                    <td>${item.image ? `<img src="${item.image}" alt="${item.name}" class="weapon-img">` : 'No Image'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            page += 1;
+            loading = false;
+            document.getElementById('loading').style.display = 'none';
+        })
+        .catch(err => {
+            console.error(err);
+            loading = false;
+            document.getElementById('loading').style.display = 'none';
+        });
+}
+
+// Infinite scroll
+window.addEventListener('scroll', () => {
+    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
+        loadItems();
+    }
+});
+
+// Live search
+searchInput.addEventListener('input', () => {
+    currentQuery = searchInput.value;
+    page = 1;
+    allLoaded = false;
+    loadItems(true);
+});
+
+// Initial load
+loadItems();
+</script>
 {% endblock %}

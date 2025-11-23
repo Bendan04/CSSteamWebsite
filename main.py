@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, jsonify
 import sqlite3 as db
 
 app = Flask(__name__)
@@ -27,17 +27,42 @@ def chat():
     return render_template('chat.html')
 
 @app.route('/list')
-def list_items():
+def api_items():
+    page = int(request.args.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
+    query = request.args.get('q', '').strip()
+
     conn = db.connect('cs2_weapons.db')
     cursor = conn.cursor()
 
-    cursor.execute("SELECT name, rarity, stattrak, souvenir, image FROM items")
-    items = cursor.fetchall()
+    if query:
+        words = query.split()
+        sql = "SELECT name, rarity, stattrak, souvenir, image FROM items WHERE "
+        sql += " AND ".join(["LOWER(name) LIKE ?" for _ in words])
+        sql += " LIMIT ? OFFSET ?"
 
+        params = [f"%{word.lower()}%" for word in words]
+        params.extend([per_page, offset])
+
+        cursor.execute(sql, params)
+    else:
+        cursor.execute(
+            "SELECT name, rarity, stattrak, souvenir, image FROM items LIMIT ? OFFSET ?",
+            (per_page, offset)
+        )
+
+    items = cursor.fetchall()
     conn.close()
 
-    return render_template('list.html', items=items)
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        items_list = [
+            {'name': i[0], 'rarity': i[1], 'stattrak': i[2], 'souvenir': i[3], 'image': i[4]}
+            for i in items
+        ]
+        return jsonify(items_list)
 
+    return render_template('list.html', items=items)
 
 if __name__ == '__main__':
     app.run(debug=True)
