@@ -129,6 +129,16 @@ body {
     background-color: #333;
 }
 
+.loading {
+    text-align:center;
+    margin-top:10px; display:none;
+}
+
+.weapon-img {
+    width: 200px;
+    height: auto;
+}
+
 @media screen and (max-width: 393px) {
     .container {
         width: 95%;
@@ -148,16 +158,6 @@ body {
     .nav-logo {
         height: 60px;
         right: 0.5rem;
-    }
-
-    .weapon-img {
-        width: 200px;
-        height: auto;
-    }
-
-    .loading {
-        text-align:center;
-        margin-top:10px; display:none;
     }
 }
 
