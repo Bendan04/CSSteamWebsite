@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify
 import sqlite3 as db
 
 app = Flask(__name__)
-conn = db.connect('cs2_weapons.db')
+conn = db.connect('csgotrading.db')
 
 @app.route('/')
 def index():
@@ -33,12 +33,12 @@ def api_items():
     offset = (page - 1) * per_page
     query = request.args.get('q', '').strip()
 
-    conn = db.connect('cs2_weapons.db')
+    conn = db.connect('csgotrading.db')
     cursor = conn.cursor()
 
     if query:
         words = query.split()
-        sql = "SELECT name, rarity, stattrak, souvenir, image FROM items WHERE "
+        sql = "SELECT name, rarity, stattrak, souvenir, image FROM all_cs2_items WHERE "
         sql += " AND ".join(["LOWER(name) LIKE ?" for _ in words])
         sql += " LIMIT ? OFFSET ?"
 
@@ -48,7 +48,7 @@ def api_items():
         cursor.execute(sql, params)
     else:
         cursor.execute(
-            "SELECT name, rarity, stattrak, souvenir, image FROM items LIMIT ? OFFSET ?",
+            "SELECT name, rarity, stattrak, souvenir, image FROM all_cs2_items LIMIT ? OFFSET ?",
             (per_page, offset)
         )
 
