@@ -83,15 +83,6 @@ body {
     background-color: #555;
 }
 
-.register-btn {
-    background-color: #1a73e8;
-    border-color: #0f5acc;
-}
-
-.register-btn:hover {
-    background-color: #0f5acc;
-}
-
 .container {
     width: 80%;
     margin: 2rem auto;
