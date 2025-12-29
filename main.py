@@ -1,9 +1,47 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 import sqlite3 as db
 from functools import wraps
+# Added by Najib 
+# added these libraries to as imports for email encryption and password hashing
+import os
+from werkzeug.security import generate_password_hash, check_password_hash
+from cryptography.fernet import Fernet
 
 app = Flask(__name__)
 app.secret_key = "SecretKeyForSecretStuff123"
+
+# Added by Najib 
+# This is the email encryption key setup
+_env_key = os.environ.get("EMAIL_ENC_KEY")
+_key_bytes = None
+if _env_key:
+    _key_bytes = _env_key.encode() if not isinstance(_env_key, bytes) else _env_key
+else:
+    # Added by Najib
+    # look for the key file in documents folder or create it if it doesn't exist
+    _key_path = os.path.join(os.path.dirname(__file__), "Documents", "email_key.key")
+    if os.path.exists(_key_path):
+        with open(_key_path, "rb") as f:
+            _key_bytes = f.read()
+    else:
+        _key_bytes = Fernet.generate_key()
+        os.makedirs(os.path.dirname(_key_path), exist_ok=True)
+        with open(_key_path, "wb") as f:
+            f.write(_key_bytes)
+
+fernet = Fernet(_key_bytes)
+
+def _decrypt_email(value):
+    try:
+        return fernet.decrypt(value.encode()).decode()
+    except Exception:
+        return value
+
+def _encrypt_email(value):
+    return fernet.encrypt(value.encode()).decode()
+
+def _is_hashed(pw):
+    return isinstance(pw, str) and pw.startswith("pbkdf2:")
 
 def login_required(f):
     @wraps(f)
@@ -18,7 +56,8 @@ def login_required(f):
 def index():
     return render_template('index.html')
 
-
+# added by Najib
+# updated login route to handle password hashing and email encryption
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -28,20 +67,48 @@ def login():
         conn = db.connect('csgotrading.db')
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT user_id, username, email FROM all_accounts WHERE username = ? AND password = ?",
-            (username, password)
+            "SELECT user_id, username, email, password FROM all_accounts WHERE username = ?",
+            (username,)
         )
-        user = cursor.fetchone()
+        row = cursor.fetchone()
+        if row:
+            user_id, uname, email_value, stored_pw = row
+            if _is_hashed(stored_pw):
+                ok = check_password_hash(stored_pw, password)
+            else:
+                ok = stored_pw == password
+                if ok:
+                    # Re-hash the password and update the database
+                    new_hash = generate_password_hash(password)
+                    cursor.execute(
+                        "UPDATE all_accounts SET password = ? WHERE user_id = ?",
+                        (new_hash, user_id)
+                    )
+                    conn.commit()
+
+            if ok:
+                # Check if email is encrypted; if not, encrypt and update, tested on the user "Ben", it worked
+                decrypted_email = _decrypt_email(email_value)
+                if decrypted_email == email_value:
+                    try:
+                        encrypted_email = _encrypt_email(email_value)
+                        cursor.execute(
+                            "UPDATE all_accounts SET email = ? WHERE user_id = ?",
+                            (encrypted_email, user_id)
+                        )
+                        conn.commit()
+                    except Exception:
+                        pass
+
+                session['user_id'] = user_id
+                session['username'] = uname
+                session['email'] = _decrypt_email(email_value)
+
+                next_page = request.args.get('next')
+                conn.close()
+                return redirect(next_page or url_for('chat'))
+
         conn.close()
-
-        if user:
-            session['user_id'] = user[0]
-            session['username'] = user[1]
-            session['email'] = user[2]
-
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('chat'))
-
         return render_template('login.html', error="Invalid username or password")
 
     return render_template('login.html')
@@ -68,7 +135,15 @@ def register():
 
         conn = db.connect('csgotrading.db')
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO all_accounts (username, password, email) VALUES (?, ?, ?)",(username, password, email))
+        # updated by Najib
+        # hash the password and encrypt the email before storing
+        hashed_pw = generate_password_hash(password)
+        enc_email = _encrypt_email(email)
+        # this adds a new user to the database with hashed password and encrypted email
+        cursor.execute(
+            "INSERT INTO all_accounts (username, password, email) VALUES (?, ?, ?)",
+            (username, hashed_pw, enc_email)
+        )
         conn.commit()
         conn.close()
 
