@@ -41,7 +41,8 @@ def _encrypt_email(value):
     return fernet.encrypt(value.encode()).decode()
 
 def _is_hashed(pw):
-    return isinstance(pw, str) and pw.startswith("pbkdf2:")
+    # Check if password is hashed using any Werkzeug hash format (pbkdf2, scrypt, argon2, bcrypt)
+    return isinstance(pw, str) and any(pw.startswith(prefix) for prefix in ["pbkdf2:", "scrypt:", "argon2:", "bcrypt:"])
 
 def login_required(f):
     @wraps(f)
@@ -61,7 +62,7 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
+        username = request.form['username'].lower()  # Convert to lowercase for case-insensitive login
         password = request.form['password']
 
         conn = db.connect('csgotrading.db')
@@ -71,12 +72,24 @@ def login():
             (username,)
         )
         row = cursor.fetchone()
+        print(f"DEBUG: Looking for username '{username}'")
+        print(f"DEBUG: Found row: {row is not None}")
+        
         if row:
             user_id, uname, email_value, stored_pw = row
+            ok = False
+            
+            print(f"DEBUG: Password stored in DB starts with: {stored_pw[:20] if stored_pw else 'None'}")
+            print(f"DEBUG: Is hashed: {_is_hashed(stored_pw)}")
+            
+            # Check password - handle both hashed and unhashed (legacy) passwords
             if _is_hashed(stored_pw):
                 ok = check_password_hash(stored_pw, password)
+                print(f"DEBUG: Hashed password check result: {ok}")
             else:
+                # Legacy unhashed password - verify it
                 ok = stored_pw == password
+                print(f"DEBUG: Direct comparison result: {ok}")
                 if ok:
                     # Re-hash the password and update the database
                     new_hash = generate_password_hash(password)
@@ -87,7 +100,7 @@ def login():
                     conn.commit()
 
             if ok:
-                # Check if email is encrypted; if not, encrypt and update, tested on the user "Ben", it worked
+                # Check if email is encrypted; if not, encrypt and update
                 decrypted_email = _decrypt_email(email_value)
                 if decrypted_email == email_value:
                     try:
@@ -122,7 +135,7 @@ def logout():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get('username')
+        username = request.form.get('username').lower()  # Convert to lowercase for consistency
         email = request.form.get('email')
         password = request.form.get('password')
         confirm = request.form.get('confirm_password')
