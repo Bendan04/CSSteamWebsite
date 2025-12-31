@@ -4,8 +4,10 @@
         <li><a href="/create_trade_offer">Create Trade Offer</a></li>
         <li><a href="/chat">Chat</a></li>
     </ul>
+
     <div class="nav-auth">
-        {% if session.get('user_id') %}
+        {% if session.get('username') %}
+            <span class="nav-user">
                 {{ session['username'] }}
             </span>
             <a href="{{ url_for('logout') }}" class="auth-btn">Logout</a>
@@ -14,5 +16,6 @@
             <a href="{{ url_for('register') }}" class="auth-btn">Register</a>
         {% endif %}
     </div>
-    <img src="{{ url_for('static', filename='CounterStrikeLogo.png') }}"alt="Logo"class="nav-logo">
+
+    <img src="{{ url_for('static', filename='CounterStrikeLogo.png') }}" alt="Logo" class="nav-logo">
 </nav>
