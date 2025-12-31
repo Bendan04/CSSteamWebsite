@@ -3,6 +3,10 @@
 {% block content %}
 <h2>Login</h2>
 
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+
 <form method="POST" class="form-box">
     <label>Username:</label>
     <input type="text" name="username" required>
