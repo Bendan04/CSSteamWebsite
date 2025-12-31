@@ -47,7 +47,7 @@ def _is_hashed(pw):
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
+        if 'username' not in session:
             return redirect(url_for('login', next=request.url))
         return f(*args, **kwargs)
     return decorated_function
@@ -59,69 +59,72 @@ def index():
 
 # added by Najib
 # updated login route to handle password hashing and email encryption
+# removed user id (no need for it to be fetched)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username'].lower()  # Convert to lowercase for case-insensitive login
         password = request.form['password']
 
-        conn = db.connect('csgotrading.db')
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT user_id, username, email, password FROM all_accounts WHERE username = ?",
-            (username,)
-        )
-        row = cursor.fetchone()
-        print(f"DEBUG: Looking for username '{username}'")
-        print(f"DEBUG: Found row: {row is not None}")
-        
-        if row:
-            user_id, uname, email_value, stored_pw = row
-            ok = False
-            
-            print(f"DEBUG: Password stored in DB starts with: {stored_pw[:20] if stored_pw else 'None'}")
-            print(f"DEBUG: Is hashed: {_is_hashed(stored_pw)}")
-            
-            # Check password - handle both hashed and unhashed (legacy) passwords
-            if _is_hashed(stored_pw):
-                ok = check_password_hash(stored_pw, password)
-                print(f"DEBUG: Hashed password check result: {ok}")
-            else:
-                # Legacy unhashed password - verify it
-                ok = stored_pw == password
-                print(f"DEBUG: Direct comparison result: {ok}")
-                if ok:
-                    # Re-hash the password and update the database
-                    new_hash = generate_password_hash(password)
-                    cursor.execute(
-                        "UPDATE all_accounts SET password = ? WHERE user_id = ?",
-                        (new_hash, user_id)
-                    )
-                    conn.commit()
+        try:
+            with db.connect('csgotrading.db', timeout=10) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT username, email, password FROM all_accounts WHERE username = ?",
+                    (username,)
+                )
+                row = cursor.fetchone()
 
-            if ok:
-                # Check if email is encrypted; if not, encrypt and update
-                decrypted_email = _decrypt_email(email_value)
-                if decrypted_email == email_value:
-                    try:
-                        encrypted_email = _encrypt_email(email_value)
-                        cursor.execute(
-                            "UPDATE all_accounts SET email = ? WHERE user_id = ?",
-                            (encrypted_email, user_id)
-                        )
-                        conn.commit()
-                    except Exception:
-                        pass
+                print(f"DEBUG: Looking for username '{username}'")
+                print(f"DEBUG: Found row: {row is not None}")
 
-                session['user_id'] = user_id
-                session['username'] = uname
-                session['email'] = _decrypt_email(email_value)
+                if row:
+                    uname, email_value, stored_pw = row
+                    ok = False
 
-                next_page = request.args.get('next')
-                conn.close()
-                return redirect(next_page or url_for('chat'))
+                    print(f"DEBUG: Password stored in DB starts with: {stored_pw[:20] if stored_pw else 'None'}")
+                    print(f"DEBUG: Is hashed: {_is_hashed(stored_pw)}")
 
-        conn.close()
+                    # Check password - handle both hashed and unhashed (legacy) passwords
+                    if _is_hashed(stored_pw):
+                        ok = check_password_hash(stored_pw, password)
+                        print(f"DEBUG: Hashed password check result: {ok}")
+                    else:
+                        # Legacy unhashed password - verify it
+                        ok = stored_pw == password
+                        print(f"DEBUG: Direct comparison result: {ok}")
+                        if ok:
+                            # Re-hash the password and update the database
+                            new_hash = generate_password_hash(password)
+                            cursor.execute(
+                                "UPDATE all_accounts SET password = ? WHERE username = ?",
+                                (new_hash, uname)
+                            )
+                            conn.commit()
+
+                    if ok:
+                        # Check if email is encrypted; if not, encrypt and update
+                        decrypted_email = _decrypt_email(email_value)
+                        if decrypted_email == email_value:
+                            try:
+                                encrypted_email = _encrypt_email(email_value)
+                                cursor.execute(
+                                    "UPDATE all_accounts SET email = ? WHERE username = ?",
+                                    (encrypted_email, uname)
+                                )
+                                conn.commit()
+                            except Exception:
+                                pass
+
+                        session['username'] = uname
+                        session['email'] = _decrypt_email(email_value)
+
+                        next_page = request.args.get('next')
+                        return redirect(next_page or url_for('chat'))
+
+        except Exception as e:
+            print("LOGIN ERROR:", e)
+
         return render_template('login.html', error="Invalid username or password")
 
     return render_template('login.html')
@@ -135,30 +138,44 @@ def logout():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get('username').lower()  # Convert to lowercase for consistency
+        username = request.form.get('username', '').lower()
         email = request.form.get('email')
         password = request.form.get('password')
         confirm = request.form.get('confirm_password')
 
+        if not username or not email or not password:
+            return render_template('register.html', error="All fields required")
+
         if password != confirm:
             return render_template('register.html', error="Passwords do not match")
 
-        elif not username or not email or not password:
-            return render_template('register.html', error="All fields required")
+        # ^ swapped these to check if email exists before inserting
+        # got error when trying to register with an already used email (FIXED BY K)
+        try:
+            with db.connect('csgotrading.db', timeout=10) as conn:
+                cursor = conn.cursor()
 
-        conn = db.connect('csgotrading.db')
-        cursor = conn.cursor()
-        # updated by Najib
-        # hash the password and encrypt the email before storing
-        hashed_pw = generate_password_hash(password)
-        enc_email = _encrypt_email(email)
-        # this adds a new user to the database with hashed password and encrypted email
-        cursor.execute(
-            "INSERT INTO all_accounts (username, password, email) VALUES (?, ?, ?)",
-            (username, hashed_pw, enc_email)
-        )
-        conn.commit()
-        conn.close()
+                # Check username
+                cursor.execute(
+                    "SELECT 1 FROM all_accounts WHERE username = ?",
+                    (username,)
+                )
+                if cursor.fetchone():
+                    return render_template(
+                        'register.html',
+                        error="Username already exists"
+                    )
+                hashed_pw = generate_password_hash(password)
+                enc_email = _encrypt_email(email)
+                # Insert user
+                cursor.execute(
+                    "INSERT INTO all_accounts (username, password, email) VALUES (?, ?, ?)",
+                    (username, hashed_pw, enc_email)
+                )
+                conn.commit()
+
+        except sqlite3.IntegrityError:
+            return render_template('register.html', error="Username already exists")
 
         return redirect(url_for('login'))
 
@@ -221,4 +238,4 @@ def api_items():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
