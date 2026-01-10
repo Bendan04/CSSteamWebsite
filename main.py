@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 import sqlite3 as db
+import sqlite3
 from functools import wraps
 # Added by Najib 
 # added these libraries to as imports for email encryption and password hashing
@@ -48,6 +49,9 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'username' not in session:
+            # Check if this is an AJAX request
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': 'Authentication required'}), 401
             return redirect(url_for('login', next=request.url))
         return f(*args, **kwargs)
     return decorated_function
@@ -167,10 +171,13 @@ def register():
                     )
                 hashed_pw = generate_password_hash(password)
                 enc_email = _encrypt_email(email)
+                # Generate user ID
+                import uuid
+                user_id = str(uuid.uuid4())
                 # Insert user
                 cursor.execute(
-                    "INSERT INTO all_accounts (username, password, email) VALUES (?, ?, ?)",
-                    (username, hashed_pw, enc_email)
+                    "INSERT INTO all_accounts (\"user id\", username, password, email) VALUES (?, ?, ?, ?)",
+                    (user_id, username, hashed_pw, enc_email)
                 )
                 conn.commit()
 
@@ -190,6 +197,13 @@ def create_trade_offer():
     return render_template('create_trade_offer_page.html')
 
 
+def get_user_id(username):
+    with db.connect('csgotrading.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT \"user id\" FROM all_accounts WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
 @app.route('/chat')
 @login_required
 def chat():
@@ -199,6 +213,120 @@ def chat():
         email=session['email']
     )
 
+@app.route('/api/friends')
+@login_required
+def get_friends():
+    username = session['username']
+    with db.connect('csgotrading.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT username FROM all_accounts WHERE username != ?",
+            (username,)
+        )
+        friends = [row[0] for row in cursor.fetchall()]
+    return jsonify(friends)
+
+@app.route('/api/chat_threads')
+@login_required
+def get_chat_threads():
+    username = session['username']
+    user_id = get_user_id(username)
+    if not user_id:
+        return jsonify([])
+    
+    with db.connect('csgotrading.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT ct."chat id", 
+                   CASE WHEN ct."user1 id" = ? THEN a2.username ELSE a1.username END as other_user
+            FROM all_chat_threads ct
+            JOIN all_accounts a1 ON ct."user1 id" = a1."user id"
+            JOIN all_accounts a2 ON ct."user2 id" = a2."user id"
+            WHERE ct."user1 id" = ? OR ct."user2 id" = ?
+        ''', (user_id, user_id, user_id))
+        threads = [{'id': row[0], 'other_user': row[1]} for row in cursor.fetchall()]
+    return jsonify(threads)
+
+@app.route('/api/messages/<thread_id>')
+@login_required
+def get_messages(thread_id):
+    username = session['username']
+    user_id = get_user_id(username)
+    if not user_id:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Verify user has access to this thread
+    with db.connect('csgotrading.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM all_chat_threads WHERE \"chat id\" = ? AND (\"user1 id\" = ? OR \"user2 id\" = ?)",
+            (thread_id, user_id, user_id)
+        )
+        if not cursor.fetchone():
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        cursor.execute('''
+            SELECT a.username, m.content, m.time
+            FROM all_messages m
+            JOIN all_accounts a ON m."sender id" = a."user id"
+            WHERE m."thread id" = ?
+            ORDER BY m.time ASC
+        ''', (thread_id,))
+        messages = [{'sender': row[0], 'message': row[1], 'time': row[2]} for row in cursor.fetchall()]
+    return jsonify(messages)
+
+@app.route('/api/send_message', methods=['POST'])
+@login_required
+def send_message():
+    username = session['username']
+    user_id = get_user_id(username)
+    if not user_id:
+        return jsonify({'error': 'User not found'}), 404
+    
+    data = request.get_json()
+    recipient_username = data.get('recipient')
+    message_content = data.get('message')
+    
+    if not recipient_username or not message_content:
+        return jsonify({'error': 'Missing recipient or message'}), 400
+    
+    recipient_id = get_user_id(recipient_username)
+    if not recipient_id:
+        return jsonify({'error': 'Recipient not found'}), 404
+    
+    with db.connect('csgotrading.db') as conn:
+        cursor = conn.cursor()
+        
+        # Get or create thread
+        cursor.execute('''
+            SELECT "chat id" FROM all_chat_threads 
+            WHERE ("user1 id" = ? AND "user2 id" = ?) OR ("user1 id" = ? AND "user2 id" = ?)
+        ''', (user_id, recipient_id, recipient_id, user_id))
+        thread = cursor.fetchone()
+        
+        if not thread:
+            # Generate a unique chat id
+            import uuid
+            chat_id = str(uuid.uuid4())
+            cursor.execute(
+                "INSERT INTO all_chat_threads (\"chat id\", \"user1 id\", \"user2 id\") VALUES (?, ?, ?)",
+                (chat_id, user_id, recipient_id)
+            )
+            thread_id = chat_id
+        else:
+            thread_id = thread[0]
+        
+        # Insert message
+        import uuid
+        message_id = str(uuid.uuid4())
+        from datetime import datetime
+        cursor.execute(
+            "INSERT INTO all_messages (\"message id\", \"sender id\", content, time, \"thread id\") VALUES (?, ?, ?, ?, ?)",
+            (message_id, user_id, message_content, datetime.now(), thread_id)
+        )
+        conn.commit()
+    
+    return jsonify({'success': True})
 
 @app.route('/list')
 def api_items():

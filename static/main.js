@@ -6,22 +6,23 @@ let currentQuery = '';
 const tbody = document.getElementById('items-body');
 const searchInput = document.getElementById('search-input');
 
-function loadItems(reset=false) {
+function loadItems(reset = false) {
     if (loading || allLoaded) return;
+
     loading = true;
     document.getElementById('loading').style.display = 'block';
 
-    const url = `/list?page=${page}&q=${encodeURIComponent(currentQuery)}`;
-
-    fetch(url, { headers: {'X-Requested-With': 'XMLHttpRequest'} })
+    fetch(`/list?page=${page}&q=${encodeURIComponent(currentQuery)}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
         .then(res => res.json())
         .then(data => {
             if (reset) tbody.innerHTML = '';
+
             if (data.length === 0) {
                 allLoaded = true;
-                if (reset) tbody.innerHTML = '<tr><td colspan="5">No items found.</td></tr>';
-                document.getElementById('loading').innerText = 'No more items.';
-                loading = false;
+                tbody.innerHTML =
+                    '<tr><td colspan="5">No items found.</td></tr>';
                 return;
             }
 
@@ -32,36 +33,35 @@ function loadItems(reset=false) {
                     <td>${item.rarity}</td>
                     <td>${item.stattrak}</td>
                     <td>${item.souvenir}</td>
-                    <td>${item.image ? `<img src="${item.image}" alt="${item.name}" class="weapon-img">` : 'No Image'}</td>
+                    <td>${item.image ? `<img src="${item.image}" class="weapon-img">` : 'No Image'}</td>
                 `;
                 tbody.appendChild(tr);
             });
 
-            page += 1;
-            loading = false;
-            document.getElementById('loading').style.display = 'none';
+            page++;
         })
-        .catch(err => {
-            console.error(err);
+        .finally(() => {
             loading = false;
             document.getElementById('loading').style.display = 'none';
         });
 }
 
-// Infinite scroll
+/* Infinite scroll */
 window.addEventListener('scroll', () => {
     if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
         loadItems();
     }
 });
 
-// Live search
-searchInput.addEventListener('input', () => {
+/* Live search */
+searchInput?.addEventListener('input', () => {
     currentQuery = searchInput.value;
     page = 1;
     allLoaded = false;
     loadItems(true);
 });
 
-// Initial load
-loadItems();
+/* Initial load */
+if (tbody) {
+    loadItems();
+}

@@ -8,7 +8,30 @@
     <p><strong>Email:</strong> {{ email }}</p>
 </div>
 
-<h1>Chat System</h1>
-<p>Friends list here</p>
-
+<div class="chat-container">
+    <div class="friends-list">
+        <h3>Friends</h3>
+        <div id="friends-container">
+            <!-- Friends will be loaded here -->
+        </div>
+    </div>
+    
+    <div class="chat-area">
+        <div id="chat-header">
+            <h3 id="chat-with">Select a friend to start chatting</h3>
+        </div>
+        
+        <div id="messages-container">
+            <!-- Messages will be displayed here -->
+        </div>
+        
+        <div id="message-input-container" style="display: none;">
+            <form id="message-form">
+                <input type="text" id="message-input" placeholder="Type your message..." required>
+                <button type="submit">Send</button>
+            </form>
+        </div>
+    </div>
+</div>
+<script src="{{ url_for('static', filename='chat.js') }}"></script>
 {% endblock %}
