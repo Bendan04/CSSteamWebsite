@@ -1,7 +1,8 @@
-const currentUsername = '{{ username }}';
+const currentUsername = window.CURRENT_USERNAME;
 let currentThreadId = null;
 let currentRecipient = null;
 let messageInterval = null;
+const openedThreads = new Set();
 
 async function loadFriends() {
     try {
@@ -47,22 +48,14 @@ async function loadChatThreads() {
 
         const friends = await friendsRes.json();
         const threads = await threadsRes.json();
-        const usersWithChats = new Set(threads.map(t => t.other_user));
 
-        const container = document.getElementById('friends-container');
-        container.innerHTML = '';
+        renderFriendsList(friends, threads);
 
-        friends.forEach(friend => {
-            const div = document.createElement('div');
-            div.className = `friend-item ${usersWithChats.has(friend) ? 'has-chat' : ''}`;
-            div.textContent = friend;
-            div.onclick = () => startChat(friend);
-            container.appendChild(div);
-        });
     } catch (err) {
         console.error(err);
     }
 }
+
 
 async function startChat(recipient) {
     currentRecipient = recipient;
@@ -70,12 +63,18 @@ async function startChat(recipient) {
     document.getElementById('message-input-container').style.display = 'block';
 
     try {
-        const res = await fetch('/api/chat_threads');
-        const threads = await res.json();
+        const threadsRes = await fetch('/api/chat_threads');
+        const threads = await threadsRes.json();
+
         const thread = threads.find(t => t.other_user === recipient);
 
         if (thread) {
             currentThreadId = thread.id;
+            openedThreads.add(thread.id);
+            const friendsRes = await fetch('/api/friends');
+            const friends = await friendsRes.json();
+            renderFriendsList(friends, threads);
+
             await loadMessages(thread.id);
         } else {
             document.getElementById('messages-container').innerHTML =
@@ -85,16 +84,8 @@ async function startChat(recipient) {
 
         if (messageInterval) clearInterval(messageInterval);
 
-        messageInterval = setInterval(async () => {
-            const res = await fetch('/api/chat_threads');
-            const threads = await res.json();
-            const thread = threads.find(t => t.other_user === currentRecipient);
+        messageInterval = setInterval(loadChatThreads, 2000);
 
-            if (thread) {
-                currentThreadId = thread.id;
-                await loadMessages(thread.id);
-            }
-        }, 2000);
     } catch (err) {
         console.error(err);
     }
@@ -132,18 +123,47 @@ async function loadMessages(threadId) {
 
 document.getElementById('message-form')?.addEventListener('submit', async e => {
     e.preventDefault();
+
     const input = document.getElementById('message-input');
     const message = input.value.trim();
-    if (!message) return;
+    if (!message || !currentRecipient) return;
 
     input.value = '';
 
+    // Send message to server
     await fetch('/api/send_message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: currentRecipient, message })
     });
+    
+    if (currentThreadId) {
+        await loadMessages(currentThreadId);
+    }
+
+    openedThreads.add(currentThreadId);
 });
+
+
+function renderFriendsList(friends, threads) {
+    const container = document.getElementById('friends-container');
+    container.innerHTML = '';
+
+    friends.forEach(friend => {
+        const thread = threads.find(t => t.other_user === friend);
+
+        const isUnread =
+            thread &&
+            !thread.last_sender_is_me &&
+            !openedThreads.has(thread.id);
+
+        const div = document.createElement('div');
+        div.className = `friend-item ${isUnread ? 'has-chat' : ''}`;
+        div.textContent = friend;
+        div.onclick = () => startChat(friend);
+        container.appendChild(div);
+    });
+}
 
 /* Chat init */
 if (currentUsername && document.getElementById('friends-container')) {

@@ -1,6 +1,37 @@
 {% extends 'base.html' %}
 {% block title %}Home{% endblock %}
+
 {% block content %}
-    <h1>Welcome to Steam Database</h1>
-    <p>Browse our collection of games and their details.</p>
+<section class="index-section">
+    <img src="{{ url_for('static', filename='index_image.png') }}" alt="CSGO Trading" class="index-image">
+
+    <div class="index-overlay">
+        <h1>Trade Smarter.<br>Build Your Inventory.</h1>
+        <p>Browse skins, chat with traders, and manage your offers in one place.</p>
+        <a href="/list" class="index-btn">View Skins</a>
+    </div>
+</section>
+
+<section class="home-features">
+
+    <div class="feature-card">
+        <h3>View List</h3>
+        <p>Browse all CS2 weapon skins with rarity, StatTrak and images.</p>
+        <a href="/list" class="feature-btn">View List</a>
+    </div>
+
+    <div class="feature-card">
+        <h3>View Trades</h3>
+        <p>See active trade offers and find the perfect deal.</p>
+        <a href="/create_trade_offer" class="feature-btn">View Trades</a>
+    </div>
+
+    <div class="feature-card">
+        <h3>Register With Us</h3>
+        <p>Create an account to chat, trade, and manage your inventory.</p>
+        <a href="/register" class="feature-btn">Register</a>
+    </div>
+
+</section>
+
 {% endblock %}

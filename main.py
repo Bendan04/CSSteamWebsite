@@ -233,18 +233,35 @@ def get_chat_threads():
     user_id = get_user_id(username)
     if not user_id:
         return jsonify([])
-    
+
     with db.connect('csgotrading.db') as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT ct."chat id", 
-                   CASE WHEN ct."user1 id" = ? THEN a2.username ELSE a1.username END as other_user
+            SELECT 
+                ct."chat id",
+                CASE 
+                    WHEN ct."user1 id" = ? THEN a2.username 
+                    ELSE a1.username 
+                END AS other_user,
+                m."sender id" AS last_sender
             FROM all_chat_threads ct
             JOIN all_accounts a1 ON ct."user1 id" = a1."user id"
             JOIN all_accounts a2 ON ct."user2 id" = a2."user id"
+            LEFT JOIN all_messages m 
+                ON m."thread id" = ct."chat id"
             WHERE ct."user1 id" = ? OR ct."user2 id" = ?
+            GROUP BY ct."chat id"
+            HAVING MAX(m.time)
         ''', (user_id, user_id, user_id))
-        threads = [{'id': row[0], 'other_user': row[1]} for row in cursor.fetchall()]
+
+        threads = []
+        for row in cursor.fetchall():
+            threads.append({
+                'id': row[0],
+                'other_user': row[1],
+                'last_sender_is_me': row[2] == user_id
+            })
+
     return jsonify(threads)
 
 @app.route('/api/messages/<thread_id>')
