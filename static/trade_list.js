@@ -64,20 +64,40 @@ document.addEventListener("DOMContentLoaded", () => {
     loadTrades(getFilterParams());
   });
 
-  document.getElementById("clear-filter")?.addEventListener("click", () => {
+document.getElementById("clear-filter")?.addEventListener("click", () => {
     document.getElementById("filter-item").value = "";
+    document.getElementById("filter-rarity").value = "";
+    document.getElementById("filter-wear").value = "";
+    document.getElementById("filter-stattrak").checked = false;
+    document.getElementById("filter-souvenir").checked = false;
     document.getElementById("filter-type").value = "any";
+
     loadTrades({});
-  });
+});
 });
 
 
 function getFilterParams() {
-    return {
-        item: document.getElementById("filter-item")?.value.trim(),
-        type: document.getElementById("filter-type")?.value || "any"
-    };
+    const params = {};
+
+    const item = document.getElementById("filter-item")?.value.trim();
+    const rarity = document.getElementById("filter-rarity")?.value;
+    const wear = document.getElementById("filter-wear")?.value;
+    const stattrak = document.getElementById("filter-stattrak")?.checked;
+    const souvenir = document.getElementById("filter-souvenir")?.checked;
+    const type = document.getElementById("filter-type")?.value;
+
+    if (item) params.item = item;
+    if (rarity) params.rarity = rarity;
+    if (wear) params.wear = wear;
+    if (stattrak) params.stattrak = 1;
+    if (souvenir) params.souvenir = 1;
+    if (type && type !== "any") params.type = type;
+
+    return params;
 }
+
+
 
 function renderGrid(items) {
   const slots = [];

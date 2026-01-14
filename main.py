@@ -460,8 +460,14 @@ def api_create_trade_offer():
 
 @app.route('/api/trades')
 def api_trades():
+    print("ARGS:", dict(request.args))
+
     item_query = request.args.get("item", "").strip().lower()
+    wear = request.args.get("wear", "").strip().lower()
     search_type = request.args.get("type", "any")
+    rarity = request.args.get("rarity")
+    stattrak = request.args.get("stattrak")
+    souvenir = request.args.get("souvenir")
 
     with db.connect('csgotrading.db') as conn:
         cursor = conn.cursor()
@@ -470,9 +476,25 @@ def api_trades():
         params = []
 
         if item_query:
-            conditions.append("LOWER(i.name) LIKE ?")
-            params.append(f"%{item_query}%")
+            for word in item_query.split():
+                conditions.append("LOWER(i.name) LIKE ?")
+                params.append(f"%{word}%")
 
+        if wear:
+            for word in wear.split():
+                conditions.append("LOWER(i.name) LIKE ?")
+                params.append(f"%{word}%")
+
+        if rarity:
+            conditions.append("i.rarity = ?")
+            params.append(rarity)
+
+        if stattrak:
+            conditions.append("i.stattrak = 1")
+
+        if souvenir:
+            conditions.append("i.souvenir = 1")
+            
         if search_type == "has":
             conditions.append('ti."has/wants" = 1')
         elif search_type == "wants":
@@ -482,7 +504,6 @@ def api_trades():
         if conditions:
             where_clause = "WHERE " + " AND ".join(conditions)
 
-        # 🔑 STEP 1: find matching trade IDs via TRADE ITEMS
         cursor.execute(f'''
             SELECT DISTINCT
                 ti."trade id"
@@ -496,7 +517,6 @@ def api_trades():
         if not trade_ids:
             return jsonify([])
 
-        # 🔑 STEP 2: load trade + owner info ONLY for matching trades
         cursor.execute(f'''
             SELECT
                 t."trade id",
@@ -521,7 +541,6 @@ def api_trades():
             for trade_id, time, username, user_id in cursor.fetchall()
         }
 
-        # 🔑 STEP 3: attach ALL items for those trades
         cursor.execute(f'''
             SELECT
                 ti."trade id",
@@ -547,6 +566,7 @@ def api_trades():
                 trade_map[trade_id]["wants"].append(item)
 
     return jsonify(list(trade_map.values()))
+
 
 
 

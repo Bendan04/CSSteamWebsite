@@ -3,33 +3,28 @@ let currentThreadId = null;
 let currentRecipient = null;
 let messageInterval = null;
 const openedThreads = new Set();
+const params = new URLSearchParams(window.location.search);
+const preselectedUser = params.get('user');
 
-async function loadFriends() {
+async function loadChatThreads() {
     try {
-        const response = await fetch('/api/friends');
-        if (!response.ok) {
-            if (response.status === 401) {
-                document.getElementById('friends-container').innerHTML =
-                    '<p>Please log in to view friends.</p>';
-                return;
-            }
-            throw new Error(`HTTP ${response.status}`);
-        }
+        const res = await fetch('/api/chat_threads');
+        if (!res.ok) return;
 
-        const friends = await response.json();
+        const threads = await res.json();
         const container = document.getElementById('friends-container');
         container.innerHTML = '';
 
-        if (friends.length === 0) {
-            container.innerHTML = '<p>No other users found.</p>';
+        if (threads.length === 0) {
+            container.innerHTML = '<p>No chats yet.</p>';
             return;
         }
 
-        friends.forEach(friend => {
+        threads.forEach(thread => {
             const div = document.createElement('div');
             div.className = 'friend-item';
-            div.textContent = friend;
-            div.onclick = () => startChat(friend);
+            div.textContent = thread.other_user;
+            div.onclick = () => startChat(thread.other_user);
             container.appendChild(div);
         });
     } catch (err) {
@@ -37,59 +32,48 @@ async function loadFriends() {
     }
 }
 
-async function loadChatThreads() {
-    try {
-        const [friendsRes, threadsRes] = await Promise.all([
-            fetch('/api/friends'),
-            fetch('/api/chat_threads')
-        ]);
-
-        if (!friendsRes.ok || !threadsRes.ok) return;
-
-        const friends = await friendsRes.json();
-        const threads = await threadsRes.json();
-
-        renderFriendsList(friends, threads);
-
-    } catch (err) {
-        console.error(err);
-    }
-}
-
-
 async function startChat(recipient) {
+    if (!recipient) return;
+
     currentRecipient = recipient;
     document.getElementById('chat-with').textContent = `Chat with ${recipient}`;
     document.getElementById('message-input-container').style.display = 'block';
 
     try {
-        const threadsRes = await fetch('/api/chat_threads');
-        const threads = await threadsRes.json();
+        const res = await fetch('/api/chat_threads');
+        if (!res.ok) return;
 
+        const threads = await res.json();
         const thread = threads.find(t => t.other_user === recipient);
 
         if (thread) {
             currentThreadId = thread.id;
             openedThreads.add(thread.id);
-            const friendsRes = await fetch('/api/friends');
-            const friends = await friendsRes.json();
-            renderFriendsList(friends, threads);
-
             await loadMessages(thread.id);
         } else {
+            currentThreadId = null;
             document.getElementById('messages-container').innerHTML =
                 '<p>Start a conversation!</p>';
-            currentThreadId = null;
         }
+
+        // Refresh sidebar once to highlight active chat
+        loadChatThreads();
 
         if (messageInterval) clearInterval(messageInterval);
 
-        messageInterval = setInterval(loadChatThreads, 2000);
+        // Poll for updates (messages + sidebar)
+        messageInterval = setInterval(async () => {
+            if (currentThreadId) {
+                await loadMessages(currentThreadId);
+            }
+            loadChatThreads();
+        }, 2000);
 
     } catch (err) {
         console.error(err);
     }
 }
+
 
 async function loadMessages(threadId) {
     try {
@@ -130,42 +114,41 @@ document.getElementById('message-form')?.addEventListener('submit', async e => {
 
     input.value = '';
 
-    // Send message to server
+    // Send message
     await fetch('/api/send_message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: currentRecipient, message })
     });
-    
+
+    // 🔑 If thread doesn't exist yet, discover it
+    if (!currentThreadId) {
+        const res = await fetch('/api/chat_threads');
+        const threads = await res.json();
+        const thread = threads.find(t => t.other_user === currentRecipient);
+
+        if (thread) {
+            currentThreadId = thread.id;
+            openedThreads.add(thread.id);
+        }
+    }
+
+    // 🔑 Always load messages once thread ID is known
     if (currentThreadId) {
         await loadMessages(currentThreadId);
     }
 
-    openedThreads.add(currentThreadId);
+    // Refresh sidebar so chat appears immediately
+    loadChatThreads();
 });
 
 
-function renderFriendsList(friends, threads) {
-    const container = document.getElementById('friends-container');
-    container.innerHTML = '';
-
-    friends.forEach(friend => {
-        const thread = threads.find(t => t.other_user === friend);
-
-        const isUnread =
-            thread &&
-            !thread.last_sender_is_me &&
-            !openedThreads.has(thread.id);
-
-        const div = document.createElement('div');
-        div.className = `friend-item ${isUnread ? 'has-chat' : ''}`;
-        div.textContent = friend;
-        div.onclick = () => startChat(friend);
-        container.appendChild(div);
+/* Chat init */
+if (currentUsername && document.getElementById('friends-container')) {
+    loadChatThreads().then(() => {
+        if (preselectedUser) {
+            startChat(preselectedUser);
+        }
     });
 }
 
-/* Chat init */
-if (currentUsername && document.getElementById('friends-container')) {
-    loadChatThreads();
-}
