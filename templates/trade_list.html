@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Trades{% endblock %}
+
+{% block content %}
+<h1>Trades</h1>
+<div class="trade-filter">
+
+    <h3>filter</h3>
+
+    <div class="filter-row">
+
+        <!-- ITEM (AUTOCOMPLETE DROPDOWN) -->
+        <div class="filter-group">
+            <label>select item</label>
+            <input
+                type="text"
+                id="filter-item"
+                list="item-options"
+                placeholder="select item"
+                autocomplete="off"
+            >
+            <datalist id="item-options">
+                <!-- populated later -->
+            </datalist>
+        </div>
+
+        <!-- RARITY -->
+        <div class="filter-group">
+            <label>select rarity</label>
+            <select id="filter-rarity">
+                <option value="">any</option>
+                <option value="Consumer Grade">Consumer Grade</option>
+                <option value="Industrial Grade">Industrial Grade</option>
+                <option value="Mil-Spec Grade">Mil-Spec Grade</option>
+                <option value="Restricted">Restricted</option>
+                <option value="Classified">Classified</option>
+                <option value="Covert">Covert</option>
+                <option value="Contraband">Contraband</option>
+            </select>
+        </div>
+
+        <!-- WEAR -->
+        <div class="filter-group">
+            <label>select wear</label>
+            <select id="filter-wear">
+                <option value="">any</option>
+                <option value="Factory New">Factory New</option>
+                <option value="Minimal Wear">Minimal Wear</option>
+                <option value="Field-Tested">Field-Tested</option>
+                <option value="Well-Worn">Well-Worn</option>
+                <option value="Battle-Scarred">Battle-Scarred</option>
+            </select>
+        </div>
+
+    </div>
+
+    <div class="filter-row">
+        <label>
+            <input type="checkbox" id="filter-stattrak">
+            stat track
+        </label>
+
+        <label>
+            <input type="checkbox" id="filter-souvenir">
+            souvenir
+        </label>
+    </div>
+
+    <div class="filter-row">
+        <label>select search type</label>
+        <select id="filter-type">
+            <option value="any">any</option>
+            <option value="wants">i want this item</option>
+            <option value="has">i have this item</option>
+        </select>
+    </div>
+
+    <div class="filter-actions">
+		<button type="button" id="apply-filter">apply filter</button>
+		<button type="button" id="clear-filter">clear filter</button>
+    </div>
+
+</div>
+
+
+<div id="trade-list"></div>
+
+<script src="{{ url_for('static', filename='trade_list.js') }}"></script>
+{% endblock %}

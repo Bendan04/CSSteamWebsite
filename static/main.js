@@ -1,3 +1,7 @@
+/* =========================================================
+   LIST PAGE (UNCHANGED)
+   ========================================================= */
+
 let page = 1;
 let loading = false;
 let allLoaded = false;
@@ -10,19 +14,17 @@ function loadItems(reset = false) {
     if (loading || allLoaded) return;
 
     loading = true;
-    document.getElementById('loading').style.display = 'block';
+    document.getElementById('loading')?.style && (document.getElementById('loading').style.display = 'block');
 
     fetch(`/list?page=${page}&q=${encodeURIComponent(currentQuery)}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
         .then(res => res.json())
         .then(data => {
-            if (reset) tbody.innerHTML = '';
+            if (reset && tbody) tbody.innerHTML = '';
 
-            if (data.length === 0) {
+            if (!tbody || data.length === 0) {
                 allLoaded = true;
-                tbody.innerHTML =
-                    '<tr><td colspan="5">No items found.</td></tr>';
                 return;
             }
 
@@ -42,18 +44,16 @@ function loadItems(reset = false) {
         })
         .finally(() => {
             loading = false;
-            document.getElementById('loading').style.display = 'none';
+            document.getElementById('loading')?.style && (document.getElementById('loading').style.display = 'none');
         });
 }
 
-/* Infinite scroll */
 window.addEventListener('scroll', () => {
-    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
+    if (tbody && window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
         loadItems();
     }
 });
 
-/* Live search */
 searchInput?.addEventListener('input', () => {
     currentQuery = searchInput.value;
     page = 1;
@@ -61,7 +61,4 @@ searchInput?.addEventListener('input', () => {
     loadItems(true);
 });
 
-/* Initial load */
-if (tbody) {
-    loadItems();
-}
+if (tbody) loadItems();

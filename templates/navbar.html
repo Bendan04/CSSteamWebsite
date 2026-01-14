@@ -1,8 +1,14 @@
 <nav class="navbar">
     <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/create_trade_offer">Create Trade Offer</a></li>
-        <li><a href="/chat">Chat</a></li>
+
+        {% if session.get('username') %}
+            <li><a href="/trades">Trades</a></li>
+            <li><a href="/create_trade_offer">Create Trade Offer</a></li>
+            <li><a href="/chat">Chat</a></li>
+            <li><a href="/my_trades">My Trades</a></li>
+        {% endif %}
+
         <li><a href="/list">List</a></li>
     </ul>
 

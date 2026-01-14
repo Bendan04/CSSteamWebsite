@@ -1,8 +1,10 @@
-const currentUsername = window.CURRENT_USERNAME;
+const currentUsername = '{{ username }}';
 let currentThreadId = null;
 let currentRecipient = null;
 let messageInterval = null;
-const openedThreads = new Set();
+
+const params = new URLSearchParams(window.location.search);
+const preselectedUser = params.get('user');
 
 async function loadFriends() {
     try {
@@ -39,18 +41,25 @@ async function loadFriends() {
 
 async function loadChatThreads() {
     try {
-        const [friendsRes, threadsRes] = await Promise.all([
-            fetch('/api/friends'),
-            fetch('/api/chat_threads')
-        ]);
+        const res = await fetch('/api/chat_threads');
+        if (!res.ok) return;
 
-        if (!friendsRes.ok || !threadsRes.ok) return;
+        const threads = await res.json();
+        const container = document.getElementById('friends-container');
+        container.innerHTML = '';
 
-        const friends = await friendsRes.json();
-        const threads = await threadsRes.json();
+        if (threads.length === 0) {
+            container.innerHTML = '<p>No chats yet.</p>';
+            return;
+        }
 
-        renderFriendsList(friends, threads);
-
+        threads.forEach(thread => {
+            const div = document.createElement('div');
+            div.className = 'friend-item';
+            div.textContent = thread.other_user;
+            div.onclick = () => startChat(thread.other_user);
+            container.appendChild(div);
+        });
     } catch (err) {
         console.error(err);
     }
@@ -63,18 +72,12 @@ async function startChat(recipient) {
     document.getElementById('message-input-container').style.display = 'block';
 
     try {
-        const threadsRes = await fetch('/api/chat_threads');
-        const threads = await threadsRes.json();
-
+        const res = await fetch('/api/chat_threads');
+        const threads = await res.json();
         const thread = threads.find(t => t.other_user === recipient);
 
         if (thread) {
             currentThreadId = thread.id;
-            openedThreads.add(thread.id);
-            const friendsRes = await fetch('/api/friends');
-            const friends = await friendsRes.json();
-            renderFriendsList(friends, threads);
-
             await loadMessages(thread.id);
         } else {
             document.getElementById('messages-container').innerHTML =
@@ -84,8 +87,16 @@ async function startChat(recipient) {
 
         if (messageInterval) clearInterval(messageInterval);
 
-        messageInterval = setInterval(loadChatThreads, 2000);
+        messageInterval = setInterval(async () => {
+            const res = await fetch('/api/chat_threads');
+            const threads = await res.json();
+            const thread = threads.find(t => t.other_user === currentRecipient);
 
+            if (thread) {
+                currentThreadId = thread.id;
+                await loadMessages(thread.id);
+            }
+        }, 2000);
     } catch (err) {
         console.error(err);
     }
@@ -123,49 +134,28 @@ async function loadMessages(threadId) {
 
 document.getElementById('message-form')?.addEventListener('submit', async e => {
     e.preventDefault();
-
     const input = document.getElementById('message-input');
     const message = input.value.trim();
-    if (!message || !currentRecipient) return;
+    if (!message) return;
 
     input.value = '';
 
-    // Send message to server
     await fetch('/api/send_message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: currentRecipient, message })
     });
-    
-    if (currentThreadId) {
-        await loadMessages(currentThreadId);
-    }
-
-    openedThreads.add(currentThreadId);
 });
-
-
-function renderFriendsList(friends, threads) {
-    const container = document.getElementById('friends-container');
-    container.innerHTML = '';
-
-    friends.forEach(friend => {
-        const thread = threads.find(t => t.other_user === friend);
-
-        const isUnread =
-            thread &&
-            !thread.last_sender_is_me &&
-            !openedThreads.has(thread.id);
-
-        const div = document.createElement('div');
-        div.className = `friend-item ${isUnread ? 'has-chat' : ''}`;
-        div.textContent = friend;
-        div.onclick = () => startChat(friend);
-        container.appendChild(div);
-    });
-}
 
 /* Chat init */
 if (currentUsername && document.getElementById('friends-container')) {
     loadChatThreads();
+}
+
+if (currentUsername && document.getElementById('friends-container')) {
+    loadChatThreads().then(() => {
+        if (preselectedUser) {
+            startChat(preselectedUser);
+        }
+    });
 }

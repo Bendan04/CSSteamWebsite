@@ -1,6 +1,67 @@
 {% extends 'base.html' %}
-{% block title %}Trade Offer{% endblock %}
+
+{% block title %}New Trade{% endblock %}
+
 {% block content %}
-    <h1>Here is where the creating trades will be.</h1>
-    <p>Viewing all the options here.</p>
+
+<h2>NEW TRADE</h2>
+<a href="/trades">← back to trade list</a>
+
+<!-- Trade preview -->
+<div class="trade-preview">
+
+    <div class="trade-header">
+        <strong>{{ session.username }}</strong>
+    </div>
+
+    <div class="trade-grids">
+
+        <!-- HAS -->
+        <div class="trade-side">
+            <h3>has (YOUR ITEMS)</h3>
+            <div class="item-grid" id="has-grid">
+                {% for i in range(10) %}
+                    <div class="item-slot empty" data-side="has" data-index="{{ i }}"></div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- WANTS -->
+        <div class="trade-side">
+            <h3>wants (THEIR ITEMS)</h3>
+            <div class="item-grid" id="wants-grid">
+                {% for i in range(10) %}
+                    <div class="item-slot empty" data-side="wants" data-index="{{ i }}"></div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Item selection -->
+<div class="item-selection">
+    <h3>select items</h3>
+
+    <input
+        type="text"
+        id="item-search"
+        placeholder="search items"
+        autocomplete="off"
+    >
+
+    <div class="item-results" id="trade-results-scroll">
+      <div class="item-grid-scroll" id="trade-results-grid"></div>
+    </div>
+</div>
+
+<!-- Submit -->
+<div class="trade-submit">
+    <button type="submit" disabled>
+        submit
+    </button>
+</div>
+
+<script src="{{ url_for('static', filename='create_trade_offer.js') }}"></script>
 {% endblock %}
+

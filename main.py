@@ -59,7 +59,7 @@ def login_required(f):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return redirect(url_for('trades'))
 
 # added by Najib
 # updated login route to handle password hashing and email encryption
@@ -233,35 +233,18 @@ def get_chat_threads():
     user_id = get_user_id(username)
     if not user_id:
         return jsonify([])
-
+    
     with db.connect('csgotrading.db') as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT 
-                ct."chat id",
-                CASE 
-                    WHEN ct."user1 id" = ? THEN a2.username 
-                    ELSE a1.username 
-                END AS other_user,
-                m."sender id" AS last_sender
+            SELECT ct."chat id", 
+                   CASE WHEN ct."user1 id" = ? THEN a2.username ELSE a1.username END as other_user
             FROM all_chat_threads ct
             JOIN all_accounts a1 ON ct."user1 id" = a1."user id"
             JOIN all_accounts a2 ON ct."user2 id" = a2."user id"
-            LEFT JOIN all_messages m 
-                ON m."thread id" = ct."chat id"
             WHERE ct."user1 id" = ? OR ct."user2 id" = ?
-            GROUP BY ct."chat id"
-            HAVING MAX(m.time)
         ''', (user_id, user_id, user_id))
-
-        threads = []
-        for row in cursor.fetchall():
-            threads.append({
-                'id': row[0],
-                'other_user': row[1],
-                'last_sender_is_me': row[2] == user_id
-            })
-
+        threads = [{'id': row[0], 'other_user': row[1]} for row in cursor.fetchall()]
     return jsonify(threads)
 
 @app.route('/api/messages/<thread_id>')
@@ -357,16 +340,23 @@ def api_items():
 
     if query:
         words = query.split()
-        sql = "SELECT name, rarity, stattrak, souvenir, image FROM all_cs2_items WHERE "
-        sql += " AND ".join(["LOWER(name) LIKE ?" for _ in words])
-        sql += " LIMIT ? OFFSET ?"
+        sql = '''
+            SELECT item_id, name, rarity, stattrak, souvenir, image
+            FROM all_cs2_items
+            WHERE {}
+            LIMIT ? OFFSET ?
+        '''.format(" AND ".join(["LOWER(name) LIKE ?" for _ in words]))
 
         params = [f"%{word.lower()}%" for word in words]
         params.extend([per_page, offset])
         cursor.execute(sql, params)
     else:
         cursor.execute(
-            "SELECT name, rarity, stattrak, souvenir, image FROM all_cs2_items LIMIT ? OFFSET ?",
+            '''
+            SELECT item_id, name, rarity, stattrak, souvenir, image
+            FROM all_cs2_items
+            LIMIT ? OFFSET ?
+            ''',
             (per_page, offset)
         )
 
@@ -375,11 +365,295 @@ def api_items():
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify([
-            {'name': i[0], 'rarity': i[1], 'stattrak': i[2], 'souvenir': i[3], 'image': i[4]}
+            {
+                'id': i[0],
+                'name': i[1],
+                'rarity': i[2],
+                'stattrak': i[3],
+                'souvenir': i[4],
+                'image': i[5]
+            }
             for i in items
         ])
 
-    return render_template('list.html', items=items)
+    return render_template('list.html')
+
+@app.route('/api/create_trade_offer', methods=['POST'])
+@login_required
+def api_create_trade_offer():
+    data = request.get_json()
+
+    has_items = data.get('has', [])
+    wants_items = data.get('wants', [])
+
+    # Validation
+    if not has_items or not wants_items:
+        return jsonify({'error': 'At least one HAS and one WANTS item required'}), 400
+
+    user_id = get_user_id(session['username'])
+    if not user_id:
+        return jsonify({'error': 'User not found'}), 400
+
+    import uuid
+    from datetime import datetime
+
+    trade_id = str(uuid.uuid4())
+
+    try:
+        with db.connect('csgotrading.db') as conn:
+            cursor = conn.cursor()
+
+            # Insert trade
+            cursor.execute(
+                '''
+                INSERT INTO all_trade_offers
+                ("trade id", "user id", time, comment)
+                VALUES (?, ?, ?, ?)
+                ''',
+                (
+                    trade_id,
+                    user_id,
+                    datetime.now(),
+                    ""
+                )
+            )
+
+            # Insert HAS items
+            for item_id in has_items:
+                cursor.execute(
+                    '''
+                    INSERT INTO all_cs2_trade_offer_items
+                    ("trade item id", "item id", "trade id", "has/wants")
+                    VALUES (?, ?, ?, ?)
+                    ''',
+                    (
+                        str(uuid.uuid4()),
+                        item_id,
+                        trade_id,
+                        True
+                    )
+                )
+
+            # Insert WANTS items
+            for item_id in wants_items:
+                cursor.execute(
+                    '''
+                    INSERT INTO all_cs2_trade_offer_items
+                    ("trade item id", "item id", "trade id", "has/wants")
+                    VALUES (?, ?, ?, ?)
+                    ''',
+                    (
+                        str(uuid.uuid4()),
+                        item_id,
+                        trade_id,
+                        False
+                    )
+                )
+
+            conn.commit()
+
+    except Exception as e:
+        print("CREATE TRADE ERROR:", e)
+        return jsonify({'error': 'Failed to create trade'}), 500
+
+    return jsonify({'success': True, 'trade_id': trade_id})
+
+@app.route('/api/trades')
+def api_trades():
+    item_query = request.args.get("item", "").strip().lower()
+    search_type = request.args.get("type", "any")
+
+    with db.connect('csgotrading.db') as conn:
+        cursor = conn.cursor()
+
+        conditions = []
+        params = []
+
+        if item_query:
+            conditions.append("LOWER(i.name) LIKE ?")
+            params.append(f"%{item_query}%")
+
+        if search_type == "has":
+            conditions.append('ti."has/wants" = 1')
+        elif search_type == "wants":
+            conditions.append('ti."has/wants" = 0')
+
+        where_clause = ""
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+        # 🔑 STEP 1: find matching trade IDs via TRADE ITEMS
+        cursor.execute(f'''
+            SELECT DISTINCT
+                ti."trade id"
+            FROM all_cs2_trade_offer_items ti
+            JOIN all_cs2_items i ON ti."item id" = i.item_id
+            {where_clause}
+        ''', params)
+
+        trade_ids = [row[0] for row in cursor.fetchall()]
+
+        if not trade_ids:
+            return jsonify([])
+
+        # 🔑 STEP 2: load trade + owner info ONLY for matching trades
+        cursor.execute(f'''
+            SELECT
+                t."trade id",
+                t.time,
+                a.username,
+                a."user id"
+            FROM all_trade_offers t
+            JOIN all_accounts a ON t."user id" = a."user id"
+            WHERE t."trade id" IN ({",".join("?" * len(trade_ids))})
+            ORDER BY t.time DESC
+        ''', trade_ids)
+
+        trade_map = {
+            trade_id: {
+                "trade_id": trade_id,
+                "username": username,
+                "user_id": user_id,
+                "time": time,
+                "has": [],
+                "wants": []
+            }
+            for trade_id, time, username, user_id in cursor.fetchall()
+        }
+
+        # 🔑 STEP 3: attach ALL items for those trades
+        cursor.execute(f'''
+            SELECT
+                ti."trade id",
+                ti."has/wants",
+                i.item_id,
+                i.name,
+                i.image
+            FROM all_cs2_trade_offer_items ti
+            JOIN all_cs2_items i ON ti."item id" = i.item_id
+            WHERE ti."trade id" IN ({",".join("?" * len(trade_ids))})
+        ''', trade_ids)
+
+        for trade_id, has_wants, item_id, name, image in cursor.fetchall():
+            item = {
+                "item_id": item_id,
+                "name": name,
+                "image": image
+            }
+
+            if has_wants:
+                trade_map[trade_id]["has"].append(item)
+            else:
+                trade_map[trade_id]["wants"].append(item)
+
+    return jsonify(list(trade_map.values()))
+
+
+
+@app.route('/trades')
+def trades():
+    return render_template('trade_list.html')
+
+@app.route('/my_trades')
+@login_required
+def my_trades():
+    return render_template('my_trades.html')
+
+@app.route('/api/my_trades')
+@login_required
+def api_my_trades():
+    user_id = get_user_id(session['username'])
+
+    with db.connect('csgotrading.db') as conn:
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT 
+                t."trade id",
+                t.time
+            FROM all_trade_offers t
+            WHERE t."user id" = ?
+            ORDER BY t.time DESC
+        ''', (user_id,))
+
+        trades = cursor.fetchall()
+
+        trade_map = {
+            trade_id: {
+                "trade_id": trade_id,
+                "time": time,
+                "has": [],
+                "wants": []
+            }
+            for trade_id, time in trades
+        }
+
+        if not trade_map:
+            return jsonify([])
+
+        cursor.execute('''
+            SELECT
+                ti."trade id",
+                ti."has/wants",
+                i.item_id,
+                i.name,
+                i.image
+            FROM all_cs2_trade_offer_items ti
+            JOIN all_cs2_items i ON ti."item id" = i.item_id
+            WHERE ti."trade id" IN ({})
+        '''.format(",".join("?" * len(trade_map))), tuple(trade_map.keys()))
+
+        for trade_id, has_wants, item_id, name, image in cursor.fetchall():
+            item = {
+                "item_id": item_id,
+                "name": name,
+                "image": image
+            }
+            if has_wants:
+                trade_map[trade_id]["has"].append(item)
+            else:
+                trade_map[trade_id]["wants"].append(item)
+
+    return jsonify(list(trade_map.values()))
+
+@app.route('/api/delete_trade', methods=['POST'])
+@login_required
+def delete_trade():
+    data = request.get_json()
+    trade_id = data.get('trade_id')
+
+    if not trade_id:
+        return jsonify({'error': 'Missing trade id'}), 400
+
+    user_id = get_user_id(session['username'])
+
+    with db.connect('csgotrading.db') as conn:
+        cursor = conn.cursor()
+
+        # Ownership check
+        cursor.execute(
+            'SELECT 1 FROM all_trade_offers WHERE "trade id" = ? AND "user id" = ?',
+            (trade_id, user_id)
+        )
+        if not cursor.fetchone():
+            return jsonify({'error': 'Not allowed'}), 403
+
+        # Delete items first
+        cursor.execute(
+            'DELETE FROM all_cs2_trade_offer_items WHERE "trade id" = ?',
+            (trade_id,)
+        )
+
+        # Delete trade
+        cursor.execute(
+            'DELETE FROM all_trade_offers WHERE "trade id" = ?',
+            (trade_id,)
+        )
+
+        conn.commit()
+
+    return jsonify({'success': True})
+
 
 
 if __name__ == '__main__':
